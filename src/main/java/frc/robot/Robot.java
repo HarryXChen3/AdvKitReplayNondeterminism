@@ -4,6 +4,7 @@
 
 package frc.robot;
 
+import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj2.command.CommandScheduler;
 import edu.wpi.first.wpilibj2.command.Commands;
@@ -28,6 +29,8 @@ public class Robot extends LoggedRobot {
     @SuppressWarnings("FieldCanBeLocal")
     private final CommandXboxController controller = new CommandXboxController(0);
 
+    private int count = 0;
+
     public Robot() {
         if (isReal() || mode != Mode.REPLAY) {
             Logger.addDataReceiver(new WPILOGWriter()); // Log to a USB stick ("/U/logs")
@@ -37,12 +40,17 @@ public class Robot extends LoggedRobot {
             String logPath = LogFileUtil.findReplayLog(); // Pull the replay log from AdvantageScope (or prompt the user)
             Logger.setReplaySource(new WPILOGReader(logPath)); // Read replay log
             Logger.addDataReceiver(new WPILOGWriter(LogFileUtil.addPathSuffix(logPath, "_sim"))); // Save outputs to a new log
+
+            DriverStation.silenceJoystickConnectionWarning(true);
         }
 
         Logger.start(); // Start logging! No more data receivers, replay sources, or metadata values may be added.
 
         controller.a()
-                .whileTrue(Commands.run(() -> Logger.recordOutput("CommandTimestamp", Timer.getTimestamp())));
+                .whileTrue(Commands.run(() -> {
+                    Logger.recordOutput("CommandTimestamp", Timer.getTimestamp());
+                    count++;
+                }));
     }
 
     @Override
@@ -50,6 +58,7 @@ public class Robot extends LoggedRobot {
         CommandScheduler.getInstance().run();
 
         Logger.recordOutput("PeriodicTimestamp", Timer.getTimestamp());
+        Logger.recordOutput("Count", count);
 
         if (mode != Mode.REPLAY) {
             try {
