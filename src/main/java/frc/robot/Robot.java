@@ -9,13 +9,12 @@ import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj2.command.CommandScheduler;
 import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.wpilibj2.command.button.CommandXboxController;
-import org.littletonrobotics.junction.LogFileUtil;
-import org.littletonrobotics.junction.LoggedRobot;
-import org.littletonrobotics.junction.Logger;
+import org.littletonrobotics.junction.*;
 import org.littletonrobotics.junction.networktables.NT4Publisher;
 import org.littletonrobotics.junction.wpilog.WPILOGReader;
 import org.littletonrobotics.junction.wpilog.WPILOGWriter;
 
+import java.lang.reflect.Field;
 import java.util.concurrent.ThreadLocalRandom;
 
 public class Robot extends LoggedRobot {
@@ -23,18 +22,21 @@ public class Robot extends LoggedRobot {
     public enum Mode {
         REAL,
         SIM,
-        REPLAY
+        REPLAY,
     }
+
+    private final LogTable realTable;
 
     @SuppressWarnings("FieldCanBeLocal")
     private final CommandXboxController controller = new CommandXboxController(0);
-
     private int count = 0;
 
     public Robot() {
         if (isReal() || mode != Mode.REPLAY) {
             Logger.addDataReceiver(new WPILOGWriter()); // Log to a USB stick ("/U/logs")
             Logger.addDataReceiver(new NT4Publisher()); // Publish data to NetworkTables
+
+            realTable = null;
         } else {
             setUseTiming(false); // Run as fast as possible
             String logPath = LogFileUtil.findReplayLog(); // Pull the replay log from AdvantageScope (or prompt the user)
@@ -42,6 +44,20 @@ public class Robot extends LoggedRobot {
             Logger.addDataReceiver(new WPILOGWriter(LogFileUtil.addPathSuffix(logPath, "_sim"))); // Save outputs to a new log
 
             DriverStation.silenceJoystickConnectionWarning(true);
+
+            final Field entryField;
+            try {
+                entryField = Logger.class.getDeclaredField("entry");
+            } catch (final NoSuchFieldException e) {
+                throw new RuntimeException(e);
+            }
+
+            entryField.setAccessible(true);
+            try {
+                realTable = (LogTable) entryField.get(null);
+            } catch (final IllegalAccessException e) {
+                throw new RuntimeException(e);
+            }
         }
 
         Logger.start(); // Start logging! No more data receivers, replay sources, or metadata values may be added.
@@ -59,6 +75,16 @@ public class Robot extends LoggedRobot {
 
         Logger.recordOutput("PeriodicTimestamp", Timer.getTimestamp());
         Logger.recordOutput("Count", count);
+
+        if (mode == Mode.REPLAY) {
+            final boolean controllerA = controller.getHID().getAButton();
+            final boolean controllerAReal = realTable.get("RealOutputs/ControllerA", false);
+
+            Logger.recordOutput("ControllerAReal", controllerAReal);
+            Logger.recordOutput("ControllerA", controller.getHID().getAButton());
+        } else {
+            Logger.recordOutput("ControllerA", controller.getHID().getAButton());
+        }
 
         if (mode != Mode.REPLAY) {
             try {
